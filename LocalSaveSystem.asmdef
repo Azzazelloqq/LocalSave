@@ -1,6 +1,6 @@
 {
     "name": "LocalSaveSystem",
-    "rootNamespace": "",
+    "rootNamespace": "LocalSaveSystem",
     "references": [
 	"Unity.Addressables",
 	"Unity.ResourceManager"
