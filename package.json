@@ -1,15 +1,15 @@
 {
   "name": "com.azzazello.localsavesystem",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "LocalSaveSystem",
   "description": "",
   "unity": "2020.3",
   "dependencies": {
-	  },
+  },
   "keywords": [
     "local",
 	"save",
-	"system",
+	"system"
   ],
   "author": {
     "name": "Azzazelloqq",

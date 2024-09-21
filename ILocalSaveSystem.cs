@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalSaveSystem.Factory;
 
 namespace LocalSaveSystem
 {
 public interface ILocalSaveSystem : IDisposable
 {
-    public void InitializeSaves(ISavable[] savables);
-    public Task InitializeSavesAsync(ISavable[] savables, CancellationToken cancellationToken);
+    public void InitializeSaves(ISaveFactory saveFactory);
+    public Task InitializeSavesAsync(ISaveFactory saveFactory, CancellationToken cancellationToken);
     public void StartAutoSave();
     public void StopAutoSave();
     public bool IsHaveSaveInt(string id);
