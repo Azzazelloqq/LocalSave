@@ -8,9 +8,8 @@ using System.Threading.Tasks;
 using LocalSaveSystem.Factory;
 using UnityEditor;
 using UnityEngine;
-// Для BinaryFormatter
 
-namespace LocalSaveSystem.UnityLocalSaveSystem
+namespace LocalSaveSystem
 {
 /// <summary>
 /// A Unity-specific implementation of ILocalSaveSystem that uses BinaryFormatter
