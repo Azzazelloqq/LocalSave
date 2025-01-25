@@ -2,21 +2,29 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalSaveSystem.Factory;
-using Unity.Plastic.Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+// Для BinaryFormatter
 
 namespace LocalSaveSystem.UnityLocalSaveSystem
 {
 /// <summary>
-/// A Unity-specific implementation of the local save system using JSON serialization.
+/// A Unity-specific implementation of ILocalSaveSystem that uses BinaryFormatter
+/// to serialize and deserialize an array of ISavable objects to/from a file on disk.
+/// It also integrates with Unity events (such as application quitting) and provides
+/// auto-save functionality.
 /// </summary>
-public class UnityJsonLocalSaveSystem : ILocalSaveSystem
+public class UnityBinaryLocalSaveSystem : ILocalSaveSystem
 {
-	private const string FileName = "Saves.json";
+	/// <summary>
+	/// The default file name for storing binary data.
+	/// </summary>
+	private const string FileName = "Saves.dat"; // Можно поменять расширение на .bin или любое другое
+	
 	private ISavable[] _savesCache;
 	private Dictionary<string, ISavable> _loadedSaves;
 	private bool _needSaveToStorage;
@@ -28,21 +36,25 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	private bool _isDisposed;
 
 	#if UNITY_EDITOR || DEVELOPMENT_BUILD
+	// Fields for development or editor mode usage.
 	private static ISavable[] _savesCacheDev;
 
+	/// <summary>
+	/// A sample path for storing data in development or editor mode.
+	/// </summary>
 	private static string SaveDirectoryPathDev =>
 		Path.Combine(Application.persistentDataPath, "YourGameName", "SaveData");
 
-	private static string SaveFilePath =>
+	private static string SaveFilePathDev =>
 		Path.Combine(SaveDirectoryPathDev, FileName);
 	#endif
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="UnityJsonLocalSaveSystem"/> class.
+	/// Creates a new instance of UnityBinaryLocalSaveSystem with a given storage path and auto-save period.
 	/// </summary>
 	/// <param name="storagePath">The path where save files will be stored.</param>
-	/// <param name="autoSavePeriodPerSeconds">The period for auto-saving in seconds.</param>
-	public UnityJsonLocalSaveSystem(string storagePath, int autoSavePeriodPerSeconds = 3)
+	/// <param name="autoSavePeriodPerSeconds">The frequency, in seconds, for auto-saving the data.</param>
+	public UnityBinaryLocalSaveSystem(string storagePath, int autoSavePeriodPerSeconds = 3)
 	{
 		_storagePath = storagePath;
 		_filePath = Path.Combine(_storagePath, FileName);
@@ -50,10 +62,6 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		SubscribeOnEvents();
 	}
 
-	/// <summary>
-	/// Initializes the saves using a save factory.
-	/// </summary>
-	/// <param name="saveFactory">The factory that creates savable objects.</param>
 	public void InitializeSaves(ISaveFactory saveFactory)
 	{
 		var saves = saveFactory.CreateSaves();
@@ -63,24 +71,17 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		ParseSavesFromStorage();
 	}
 
-	/// <summary>
-	/// Asynchronously initializes the saves using a save factory.
-	/// </summary>
-	/// <param name="saveFactory">The factory that creates savable objects.</param>
-	/// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+	/// <inheritdoc />
 	public async Task InitializeSavesAsync(ISaveFactory saveFactory, CancellationToken cancellationToken)
 	{
 		var saves = saveFactory.CreateSaves();
-
 		_savesCache = saves ?? throw new ArgumentNullException(nameof(saves));
 		_loadedSaves = await LoadSavesAsync(cancellationToken);
 
 		ParseSavesFromStorage();
 	}
-	
-	/// <summary>
-	/// Releases all resources used by the <see cref="UnityJsonLocalSaveSystem"/>.
-	/// </summary>
+
+	/// <inheritdoc />
 	public void Dispose()
 	{
 		lock (_lock)
@@ -91,22 +92,19 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 			}
 
 			StopAutoSave();
-
 			_cancellationTokenSource?.Dispose();
 			_isDisposed = true;
 		}
 	}
 
-	/// <summary>
-	/// Starts the auto-save process.
-	/// </summary>
+	/// <inheritdoc />
 	public void StartAutoSave()
 	{
 		lock (_lock)
 		{
 			if (_isDisposed)
 			{
-				throw new ObjectDisposedException(nameof(UnityJsonLocalSaveSystem));
+				throw new ObjectDisposedException(nameof(UnityBinaryLocalSaveSystem));
 			}
 
 			var autosaveIsAlreadyStarted =
@@ -122,9 +120,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		}
 	}
 
-	/// <summary>
-	/// Stops the auto-save process.
-	/// </summary>
+	/// <inheritdoc />
 	public void StopAutoSave()
 	{
 		lock (_lock)
@@ -136,24 +132,28 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		}
 	}
 
+	/// <inheritdoc />
 	public bool IsHaveSaveInt(string id)
 	{
 		EnsureInitialized();
 		return PlayerPrefs.HasKey(id);
 	}
 
+	/// <inheritdoc />
 	public bool IsHaveSaveFloat(string id)
 	{
 		EnsureInitialized();
 		return PlayerPrefs.HasKey(id);
 	}
 
+	/// <inheritdoc />
 	public bool IsHaveSaveString(string id)
 	{
 		EnsureInitialized();
 		return PlayerPrefs.HasKey(id);
 	}
 
+	/// <inheritdoc />
 	public void SaveInt(string id, int data)
 	{
 		EnsureInitialized();
@@ -161,6 +161,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		_needSaveToStorage = true;
 	}
 
+	/// <inheritdoc />
 	public void SaveFloat(string id, float data)
 	{
 		EnsureInitialized();
@@ -168,6 +169,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		_needSaveToStorage = true;
 	}
 
+	/// <inheritdoc />
 	public void SaveString(string id, string data)
 	{
 		EnsureInitialized();
@@ -175,102 +177,97 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		_needSaveToStorage = true;
 	}
 
+	/// <inheritdoc />
 	public void Save()
 	{
 		EnsureInitialized();
 		_needSaveToStorage = true;
 	}
 
+	/// <inheritdoc />
 	public int LoadInt(string id)
 	{
 		EnsureInitialized();
-
 		if (PlayerPrefs.HasKey(id))
 		{
 			return PlayerPrefs.GetInt(id);
 		}
 
 		Debug.LogError($"Cannot find data by id {id}");
-		return default;
+		return 0;
 	}
 
+	/// <inheritdoc />
 	public float LoadFloat(string id)
 	{
 		EnsureInitialized();
-
 		if (PlayerPrefs.HasKey(id))
 		{
 			return PlayerPrefs.GetFloat(id);
 		}
 
 		Debug.LogError($"Cannot find data by id {id}");
-		return default;
+		return 0;
 	}
 
+	/// <inheritdoc />
 	public string LoadString(string id)
 	{
 		EnsureInitialized();
-
 		if (PlayerPrefs.HasKey(id))
 		{
 			return PlayerPrefs.GetString(id);
 		}
 
 		Debug.LogError($"Cannot find data by id {id}");
-		return default;
+		return null;
 	}
 
+	/// <inheritdoc />
 	public T Load<T>() where T : ISavable
 	{
 		EnsureInitialized();
-
 		foreach (var savable in _savesCache)
 		{
-			if (savable is T savedData)
+			if (savable is T typed)
 			{
-				return savedData;
+				return typed;
 			}
 		}
 
 		Debug.LogError(
-			$"Cannot find {typeof(T)}. Ensure the savable is added to {nameof(ISavable)}[] in the {nameof(InitializeSaves)} method.");
+			$"Cannot find {typeof(T)}. Ensure the savable is added to ISavable[] in the InitializeSaves method.");
 		return default;
 	}
 
-	/// <summary>
-	/// Forces an immediate save to storage.
-	/// </summary>
+	/// <inheritdoc />
 	public void ForceUpdateStorageSaves()
 	{
 		StopAutoSave();
 		SaveAll();
 	}
 
-	#if DEVELOPMENT_BUILD || UNITY_EDITOR
-	
-	/// <summary>
-	/// Deletes all saves during development or in the Unity Editor.
-	/// </summary>
+	#if UNITY_EDITOR || DEVELOPMENT_BUILD
+	/// <inheritdoc />
 	public void DeleteAllSavesDev()
 	{
 		UnsubscribeOnEvents();
 		StopAutoSave();
 		PlayerPrefs.DeleteAll();
 
-		if (!Directory.Exists(SaveDirectoryPathDev))
+		if (Directory.Exists(SaveDirectoryPathDev))
 		{
-			return;
-		}
+			if (File.Exists(SaveFilePathDev))
+			{
+				File.Delete(SaveFilePathDev);
+			}
 
-		if (File.Exists(SaveFilePath))
-		{
-			File.Delete(SaveFilePath);
+			Directory.Delete(SaveDirectoryPathDev, true);
 		}
-
-		Directory.Delete(SaveDirectoryPathDev, true);
 	}
 	#endif
 
+	/// <inheritdoc />
 	public void DeleteAllSaves()
 	{
 		EnsureInitialized();
@@ -293,9 +290,9 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Ensures that the save system has been initialized.
+	/// Ensures the local save system has been initialized with savable objects.
 	/// </summary>
-	/// <exception cref="InvalidOperationException">Thrown if the saves have not been initialized.</exception>
+	/// <exception cref="InvalidOperationException">Thrown if the system is used before initialization.</exception>
 	private void EnsureInitialized()
 	{
 		if (_savesCache != null)
@@ -308,7 +305,8 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Parses saves from the storage and initializes the savable objects.
+	/// Applies the loaded data to each object in <see cref="_savesCache"/> by matching their <see cref="ISavable.SaveId"/>.
+	/// If no data was loaded, initializes each object with default (new) values.
 	/// </summary>
 	private void ParseSavesFromStorage()
 	{
@@ -336,7 +334,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Subscribes to necessary application events.
+	/// Subscribes to Unity's application quitting event to handle final saving.
 	/// </summary>
 	private void SubscribeOnEvents()
 	{
@@ -344,7 +342,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Unsubscribes from application events.
+	/// Unsubscribes from Unity's application quitting event.
 	/// </summary>
 	private void UnsubscribeOnEvents()
 	{
@@ -352,7 +350,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Handler for the application quitting event.
+	/// Called when the application is quitting. Stops auto-save and performs a final save.
 	/// </summary>
 	private void OnApplicationQuitting()
 	{
@@ -362,10 +360,10 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Starts the auto-save loop.
+	/// Manages periodic saving in a loop until canceled.
 	/// </summary>
-	/// <param name="periodPerSeconds">The period between saves in seconds.</param>
-	/// <param name="token">Cancellation token to cancel the operation.</param>
+	/// <param name="periodPerSeconds">Time interval between save attempts in seconds.</param>
+	/// <param name="token">Cancellation token to stop auto-saving.</param>
 	private async void AutoSaveLoop(int periodPerSeconds, CancellationToken token)
 	{
 		var periodPerMilliseconds = periodPerSeconds * 1000;
@@ -386,6 +384,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 			}
 			catch (OperationCanceledException)
 			{
+				Debug.Log("[Save system] AutoSaveLoop was canceled");
 				break;
 			}
 			catch (Exception e)
@@ -396,23 +395,19 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		}
 	}
 
-	
 	/// <summary>
-	/// Saves all data asynchronously.
+	/// Performs a synchronous save of all cached ISavable objects to disk.
 	/// </summary>
-	/// <param name="token">Cancellation token to cancel the operation.</param>
 	private void SaveAll()
 	{
 		try
 		{
 			CreateDirectoryIfNeeded();
-			var settings = new JsonSerializerSettings
-			{
-				TypeNameHandling = TypeNameHandling.Auto
-			};
 
-			var json = JsonConvert.SerializeObject(_savesCache, settings);
-			File.WriteAllText(_filePath, json);
+			// Сериализуем _savesCache в бинарник
+			using var fs = new FileStream(_filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+			var formatter = new BinaryFormatter();
+			formatter.Serialize(fs, _savesCache);
 		}
 		catch (Exception e)
 		{
@@ -420,20 +415,31 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 		}
 	}
 
+	/// <summary>
+	/// Performs an asynchronous save of all cached ISavable objects to disk.
+	/// </summary>
+	/// <param name="token">Cancellation token for the save operation.</param>
 	private async Task SaveAllAsync(CancellationToken token)
 	{
 		try
 		{
 			CreateDirectoryIfNeeded();
-			var settings = new JsonSerializerSettings
+
+			byte[] bytes;
+			using (var ms = new MemoryStream())
 			{
-				TypeNameHandling = TypeNameHandling.Auto
-			};
+				var formatter = new BinaryFormatter();
+				formatter.Serialize(ms, _savesCache);
+				bytes = ms.ToArray();
+			}
 
-			var json = JsonConvert.SerializeObject(_savesCache, settings);
-			await File.WriteAllTextAsync(_filePath, json, token);
+			await File.WriteAllBytesAsync(_filePath, bytes, token);
 
-			Debug.Log("[Save system] All data saved asynchronously");
+			Debug.Log("[Save system] All data saved asynchronously (binary)");
+		}
+		catch (OperationCanceledException)
+		{
+			Debug.Log("[Save system] Save operation was canceled");
 		}
 		catch (Exception e)
 		{
@@ -442,9 +448,9 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Loads saves from the storage.
+	/// Loads any saved ISavable objects from disk in a synchronous manner.
 	/// </summary>
-	/// <returns>A dictionary of loaded savable objects.</returns>
+	/// <returns>A dictionary mapping SaveId to the deserialized objects.</returns>
 	private Dictionary<string, ISavable> LoadSaves()
 	{
 		try
@@ -454,15 +460,10 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 				return new Dictionary<string, ISavable>();
 			}
 
-			var settings = new JsonSerializerSettings
-			{
-				TypeNameHandling = TypeNameHandling.Auto
-			};
-
-			var json = File.ReadAllText(_filePath);
-			var savesList = JsonConvert.DeserializeObject<ISavable[]>(json, settings);
-
-			return savesList?.ToDictionary(s => s.SaveId) ?? new Dictionary<string, ISavable>();
+			using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+			var formatter = new BinaryFormatter();
+			var savesArray = (ISavable[])formatter.Deserialize(fs);
+			return savesArray?.ToDictionary(s => s.SaveId) ?? new Dictionary<string, ISavable>();
 		}
 		catch (Exception e)
 		{
@@ -472,10 +473,10 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Asynchronously loads saves from the storage.
+	/// Loads any saved ISavable objects from disk asynchronously.
 	/// </summary>
-	/// <param name="token">Cancellation token to cancel the operation.</param>
-	/// <returns>A dictionary of loaded savable objects.</returns>
+	/// <param name="token">Cancellation token for the load operation.</param>
+	/// <returns>A dictionary mapping SaveId to the deserialized objects.</returns>
 	private async Task<Dictionary<string, ISavable>> LoadSavesAsync(CancellationToken token)
 	{
 		try
@@ -485,19 +486,16 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 				return new Dictionary<string, ISavable>();
 			}
 
-			var settings = new JsonSerializerSettings
-			{
-				TypeNameHandling = TypeNameHandling.Auto
-			};
+			var bytes = await File.ReadAllBytesAsync(_filePath, token);
 
-			var json = await File.ReadAllTextAsync(_filePath, token);
-			var savesList = JsonConvert.DeserializeObject<ISavable[]>(json, settings);
-
-			return savesList?.ToDictionary(s => s.SaveId) ?? new Dictionary<string, ISavable>();
+			using var ms = new MemoryStream(bytes);
+			var formatter = new BinaryFormatter();
+			var savesArray = (ISavable[])formatter.Deserialize(ms);
+			return savesArray.ToDictionary(s => s.SaveId);
 		}
 		catch (OperationCanceledException)
 		{
-			// Операция отменена, возвращаем пустой словарь
+			// Операция отменена, вернём пустой словарь
 			return new Dictionary<string, ISavable>();
 		}
 		catch (Exception e)
@@ -508,7 +506,7 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Creates the storage directory if it does not exist.
+	/// Ensures that the target directory for save files exists, creating it if necessary.
 	/// </summary>
 	private void CreateDirectoryIfNeeded()
 	{
@@ -519,20 +517,19 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	#if UNITY_EDITOR
-
 	/// <summary>
-	/// Deletes all saves in development mode or Unity Editor.
+	/// Deletes all binary save files in development or editor mode via a menu item.
 	/// </summary>
-	[MenuItem("SaveSystem/DeleteAllSaves")]
-	private static void DeleteSavesDev()
+	[MenuItem("SaveSystem/DeleteAllBinarySaves")]
+	private static void DeleteSavesDevMenu()
 	{
 		PlayerPrefs.DeleteAll();
 
 		if (Directory.Exists(SaveDirectoryPathDev))
 		{
-			if (File.Exists(SaveFilePath))
+			if (File.Exists(SaveFilePathDev))
 			{
-				File.Delete(SaveFilePath);
+				File.Delete(SaveFilePathDev);
 			}
 
 			Directory.Delete(SaveDirectoryPathDev, true);
@@ -540,49 +537,41 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 	}
 
 	/// <summary>
-	/// Saves data for development purposes.
+	/// Saves data in development or editor mode by serializing the provided ISavable array.
 	/// </summary>
-	public static void SaveDev()
+	/// <param name="savesCache">An array of ISavable objects to serialize.</param>
+	public static void SaveDev(ISavable[] savesCache)
 	{
+		_savesCacheDev = savesCache;
 		if (!Directory.Exists(SaveDirectoryPathDev))
 		{
 			Directory.CreateDirectory(SaveDirectoryPathDev);
 		}
 
-		var settings = new JsonSerializerSettings
-		{
-			TypeNameHandling = TypeNameHandling.Auto
-		};
-
-		var json = JsonConvert.SerializeObject(_savesCacheDev, settings);
-		File.WriteAllText(SaveFilePath, json);
+		var path = SaveFilePathDev;
+		using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+		var formatter = new BinaryFormatter();
+		formatter.Serialize(fs, _savesCacheDev);
 	}
 
 	/// <summary>
-	/// Gets a specific savable object for development purposes.
+	/// Retrieves a specific savable object of type TSavable from the saved data in development or editor mode.
 	/// </summary>
-	/// <typeparam name="TSavable">The type of the savable object.</typeparam>
-	/// <param name="allSavables">Array of all savable objects.</param>
-	/// <returns>The requested savable object.</returns>
-	public static TSavable GetSave<TSavable>(ISavable[] allSavables) where TSavable : ISavable
+	/// <typeparam name="TSavable">The type of ISavable object to find.</typeparam>
+	/// <param name="allSavables">An array of all possible ISavable objects in the project.</param>
+	/// <returns>The loaded object if found, otherwise default.</returns>
+	public static TSavable GetSaveDev<TSavable>(ISavable[] allSavables) where TSavable : ISavable
 	{
 		_savesCacheDev = allSavables;
 		var loadedSaves = new Dictionary<string, ISavable>();
 
-		if (File.Exists(SaveFilePath))
+		var path = SaveFilePathDev;
+		if (File.Exists(path))
 		{
-			var settings = new JsonSerializerSettings
-			{
-				TypeNameHandling = TypeNameHandling.Auto
-			};
-
-			var json = File.ReadAllText(SaveFilePath);
-			var savesList = JsonConvert.DeserializeObject<ISavable[]>(json, settings);
-
-			if (savesList != null)
-			{
-				loadedSaves = savesList.ToDictionary(s => s.SaveId);
-			}
+			using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+			var formatter = new BinaryFormatter();
+			var savesArray = (ISavable[])formatter.Deserialize(fs);
+			loadedSaves = savesArray.ToDictionary(s => s.SaveId);
 		}
 
 		if (loadedSaves.Count == 0)
@@ -609,9 +598,9 @@ public class UnityJsonLocalSaveSystem : ILocalSaveSystem
 
 		foreach (var savable in _savesCacheDev)
 		{
-			if (savable is TSavable foundSave)
+			if (savable is TSavable found)
 			{
-				return foundSave;
+				return found;
 			}
 		}
 
