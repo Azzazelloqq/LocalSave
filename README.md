@@ -75,6 +75,7 @@ public sealed class SaveBootstrap
 - By default, fields are matched by their **name** in tagged saves.
 - If you rename a field, old data will be ignored and a warning is logged.
 - To keep data across renames, pin a stable id:
+- Duplicate `SaveFieldId` values log a warning once per type.
 
 ```csharp
 [SaveModel]
@@ -105,6 +106,7 @@ Notes:
 
 - **Tagged (default)**: field id + type + payload. Safe for renames/reorders.
 - **Compact**: sequential fields without metadata. Smaller but schema-sensitive.
+- `SaveFieldId` is only used in tagged format.
 
 Toggle via `SaveStoreOptions.UseTaggedFormat`:
 
@@ -114,6 +116,26 @@ var options = new SaveStoreOptions(path)
     UseTaggedFormat = false
 };
 ```
+
+If you create a registry manually, keep it in sync:
+
+```csharp
+var registry = SaveRegistry.CreateDefault(new SaveSerializationOptions
+{
+    UseTaggedFormat = false
+});
+var store = new SaveStore(options, registry: registry);
+```
+
+## Custom serializers
+
+Custom `ISaveSerializer<T>` is responsible for the on-disk format. If you want to
+respect the tagged/compact toggle, check `registry.Options.UseTaggedFormat`.
+
+## Warnings
+
+- Unknown field ids in tagged payloads are logged.
+- Field type conversion failures are logged with expected/actual types.
 
 ## Tests
 
