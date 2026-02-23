@@ -1,10 +1,13 @@
-﻿namespace LocalSaveSystem
+using System;
+
+namespace LocalSaveSystem
 {
 /// <summary>
 /// Represents an entity that can be saved and loaded by the local save system.
 /// Each savable object must have a unique identifier (SaveId) and 
 /// provide methods to initialize new data and copy from loaded data.
 /// </summary>
+[Obsolete("Legacy API. Use SaveKey<T> + SaveStore instead.")]
 public interface ISavable
 {
 	/// <summary>

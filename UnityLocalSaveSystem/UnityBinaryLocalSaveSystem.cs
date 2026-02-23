@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,6 +17,7 @@ namespace LocalSaveSystem
 /// It also integrates with Unity events (such as application quitting) and provides
 /// auto-save functionality.
 /// </summary>
+[Obsolete("Legacy BinaryFormatter implementation. Use SaveStore with binary entries instead.")]
 public class UnityBinaryLocalSaveSystem : ILocalSaveSystem
 {
 	/// <summary>

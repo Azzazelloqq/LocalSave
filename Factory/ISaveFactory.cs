@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace LocalSaveSystem.Factory
 {
@@ -6,6 +6,7 @@ namespace LocalSaveSystem.Factory
 /// A factory interface responsible for creating an array of ISavable objects 
 /// that will be managed (saved, loaded) by the local save system.
 /// </summary>
+[Obsolete("Legacy API. Use SaveKey<T> + SaveStore instead.")]
 public interface ISaveFactory : IDisposable
 {
 	/// <summary>

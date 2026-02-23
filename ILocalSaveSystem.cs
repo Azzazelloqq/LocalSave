@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalSaveSystem.Factory;
@@ -9,6 +9,7 @@ namespace LocalSaveSystem
 /// Provides an interface for a local save system that stores,
 /// loads, and manages different types of game-related data.
 /// </summary>
+[Obsolete("Legacy API. Use ISaveStore + SaveStore instead.")]
 public interface ILocalSaveSystem : IDisposable
 {
 	/// <summary>
